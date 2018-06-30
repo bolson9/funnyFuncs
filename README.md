@@ -70,3 +70,30 @@ This table tracks the subscriptions, endpoints, category they are subscribed to,
 Item format
 
 {"email": "email@email.com", "Active": True, "category": "joke", "Hour": 8}
+
+## Cloudformation Templates
+
+*cloudformation.yaml*
+
+Creates
+
+* Lambda functions
+* SNS topics
+* Dynamo DB table
+* IAM roles and polciies
+
+*cicd-cft.yaml*
+
+Creates
+
+* Codebuild project
+* CodePipeline to deploy the software
+* Cloud9 Environment for development
+* IAM policies and roles for services
+* S3 buckets for artifacts
+* Code Commit repository
+* Cloudwatch event to trigger codepipeline off of codecommit commits
+
+*cloud9.yaml*
+
+* Cloud 9 environment
