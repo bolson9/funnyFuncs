@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform:
+- AWS::Serverless-2016-10-31
+- AWS::CodeStar
+
+# Enable blue/green deployments using this Globals section. For instructions, see the AWS CodeStar User Guide:
+# https://docs.aws.amazon.com/codestar/latest/userguide/how-to-modify-serverless-project.html?icmpid=docs_acs_rm_tr
+#
+# Globals:
+#   Function:
+#     AutoPublishAlias: live
+#     DeploymentPreference:
+#       Enabled: true
+#       Type: Canary10Percent5Minutes
+Parameters:
+  EnvironmentParameter:
+    Type: String
+    Default: prod
+    AllowedValues: 
+      - prod
+    Description: Environment to deploy to
+  ProjectId:
+    Type: String
+    Description: CodeStar projectId used to associate new resources to team members
+Resources:
+  LambdaSubscribe:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoDBFunnyFuncSubs
+          JOKE_TOPIC: !Ref JokeTopic
+          FACT_TOPIC: !Ref FactTopic
+          QUOTE_TOPIC: !Ref QuoteTopic
+      Handler: subscribe.handler
+      Runtime: python3.6
+      Role: !GetAtt IamRoleLambdaSns.Arn
+      Events:
+        PostEvent:
+          Type: Api
+          Properties:
+            Path: /subscribe
+            Method: post
+  LambdaUnsubscribe:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoDBFunnyFuncSubs
+          JOKE_TOPIC: !Ref JokeTopic
+          FACT_TOPIC: !Ref FactTopic
+          QUOTE_TOPIC: !Ref QuoteTopic
+      Handler: unsubscribe.handler
+      Runtime: python3.6
+      Role: !GetAtt IamRoleLambdaSns.Arn
+      Events:
+        PostEvent:
+          Type: Api
+          Properties:
+            Path: /unsubscribe
+            Method: post
+  LambdaPublish:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          JOKE_TOPIC: !Ref JokeTopic
+          FACT_TOPIC: !Ref FactTopic
+          QUOTE_TOPIC: !Ref QuoteTopic
+      Handler: publish.handler
+      Runtime: python3.6
+      Role: !GetAtt IamRoleLambdaSns.Arn
+      Events:
+        Timer:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+  IamRoleLambdaSns:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: 
+                - "lambda.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+          -
+            PolicyName: "AllowDynamoDBWriteDelete"
+            PolicyDocument: 
+                Version: "2012-10-17"
+                Statement: 
+                  - 
+                    Effect: "Allow"
+                    Action:
+                      - "dynamodb:PutItem"
+                      - "dynamodb:UpdateItem"
+                    Resource: !GetAtt DynamoDBFunnyFuncSubs.Arn
+          -
+            PolicyName: "SnsTopicManagement"
+            PolicyDocument: 
+                Version: "2012-10-17"
+                Statement: 
+                  - 
+                    Effect: "Allow"
+                    Action:
+                      - "sns:*"
+                    Resource: 
+                      - !Ref JokeTopic
+                      - !Ref FactTopic
+                      - !Ref QuoteTopic
+          -
+            PolicyName: "CloudwatchLogging"
+            PolicyDocument: 
+                Version: "2012-10-17"
+                Statement: 
+                  - 
+                    Effect: "Allow"
+                    Action:
+                      - "logs:Describe*"
+                      - "logs:Create*"
+                      - "logs:Put*"
+                      - "logs:*"
+                    Resource: "*"
+      RoleName: App=funnyFuncs,Use=Lambda,Rights=RW
+  DynamoDBFunnyFuncSubs: 
+    Type: "AWS::DynamoDB::Table"
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "email"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "email"
+          KeyType: "HASH"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "1"
+        WriteCapacityUnits: "1"
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentParameter}FunnyFuncSubs"
+  JokeTopic:
+    Type: "AWS::SNS::Topic"
+    Properties: 
+      TopicName: !Sub "${EnvironmentParameter}JokeTopic"
+  QuoteTopic:
+    Type: "AWS::SNS::Topic"
+    Properties: 
+      TopicName: !Sub "${EnvironmentParameter}QuoteTopic"
+  FactTopic:
+    Type: "AWS::SNS::Topic"
+    Properties: 
+      TopicName: !Sub "${EnvironmentParameter}FactTopic"
